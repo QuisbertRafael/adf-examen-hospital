@@ -1,0 +1,180 @@
+{
+	"name": "df_gold_fact_admisiones",
+	"properties": {
+		"folder": {
+			"name": "gold"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "DS_Silver_admissions",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_paciente",
+						"type": "DatasetReference"
+					},
+					"name": "srcDimPaciente"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_departamento",
+						"type": "DatasetReference"
+					},
+					"name": "srcDimDepartamento"
+				},
+				{
+					"dataset": {
+						"referenceName": "DS_Silver_diagnoses",
+						"type": "DatasetReference"
+					},
+					"name": "srcDiagnosticosSilver"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_diagnostico",
+						"type": "DatasetReference"
+					},
+					"name": "srcDimDiagnostico"
+				}
+			],
+			"sinks": [],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "lookupPaciente"
+				},
+				{
+					"name": "lookup1"
+				},
+				{
+					"name": "windowDiagnostico"
+				},
+				{
+					"name": "filterDiagnostico"
+				},
+				{
+					"name": "selectDiagnostico"
+				},
+				{
+					"name": "lookupDiagnosticoSilver"
+				},
+				{
+					"name": "lookupDiagnosticoGold"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          admission_id as integer,",
+				"          patient_id as integer,",
+				"          admission_date as date,",
+				"          discharge_date as date,",
+				"          department as string,",
+				"          attending_doctor_id as integer",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source1",
+				"source(output(",
+				"          paciente_key as integer,",
+				"          patient_id_bk as integer,",
+				"          nombre_completo as string,",
+				"          genero as string,",
+				"          fecha_nacimiento as date,",
+				"          rango_etario as string,",
+				"          correo_electronico as string,",
+				"          direccion as string,",
+				"          proveedor_seguro as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDimPaciente",
+				"source(output(",
+				"          departamento_key as integer,",
+				"          nombre_departamento as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDimDepartamento",
+				"source(output(",
+				"          diagnosis_id as integer,",
+				"          admission_id as integer,",
+				"          icd_code as string,",
+				"          diagnosis_description as string,",
+				"          severity as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDiagnosticosSilver",
+				"source(output(",
+				"          diagnostico_key as integer,",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDimDiagnostico",
+				"source1 derive(admission_id_bk = admission_id,",
+				"          conteo_admisiones = 1,",
+				"          dias_estancia = \r",
+				"iif(\r",
+				"    isNull(discharge_date),\r",
+				"    toInteger(null()),\r",
+				"    toInteger(\r",
+				"        (\r",
+				"            toTimestamp(toString(discharge_date, 'yyyy-MM-dd'), 'yyyy-MM-dd', 'UTC')\r",
+				"            -\r",
+				"            toTimestamp(toString(admission_date, 'yyyy-MM-dd'), 'yyyy-MM-dd', 'UTC')\r",
+				"        ) / days(1)\r",
+				"    )\r",
+				")\r",
+				") ~> derivedColumn1",
+				"derivedColumn1, srcDimPaciente lookup(patient_id == patient_id_bk,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookupPaciente",
+				"lookupPaciente, srcDimDepartamento lookup(department == nombre_departamento,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup1",
+				"srcDiagnosticosSilver window(over(admission_id),",
+				"     asc(diagnosis_id, true),",
+				"     numero_fila = rowNumber()) ~> windowDiagnostico",
+				"windowDiagnostico filter(",
+				"numero_fila == 1",
+				") ~> filterDiagnostico",
+				"filterDiagnostico select(mapColumn(",
+				"          diag_admission_id = admission_id,",
+				"          icd_code,",
+				"          diagnosis_description,",
+				"          severity",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> selectDiagnostico",
+				"lookup1, selectDiagnostico lookup(admission_id == diag_admission_id,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookupDiagnosticoSilver",
+				"lookupDiagnosticoSilver, srcDimDiagnostico lookup(icd_code == codigo_icd",
+				"     && diagnosis_description == descripcion_patologia",
+				"     && severity == nivel_severidad,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookupDiagnosticoGold"
+			]
+		}
+	}
+}
