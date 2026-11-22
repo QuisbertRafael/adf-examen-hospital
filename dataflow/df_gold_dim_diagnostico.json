@@ -1,0 +1,109 @@
+{
+	"name": "df_gold_dim_diagnostico",
+	"properties": {
+		"folder": {
+			"name": "gold"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "DS_Silver_diagnoses",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_diagnostico",
+						"type": "DatasetReference"
+					},
+					"name": "source2"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "ds_gold_diagnostico",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "aggregate1"
+				},
+				{
+					"name": "exists1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          diagnosis_id as integer,",
+				"          admission_id as integer,",
+				"          icd_code as string,",
+				"          diagnosis_description as string,",
+				"          severity as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source1",
+				"source(output(",
+				"          diagnostico_key as integer,",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source2",
+				"source1 derive(codigo_icd = upper(trim(icd_code)),",
+				"          descripcion_patologia = iif(     isNull(diagnosis_description) ||     trim(diagnosis_description) == '',     'NO REGISTRADA',     trim(diagnosis_description) ),",
+				"          nivel_severidad = iif(     isNull(severity) ||     trim(severity) == '',     'NO INFORMADA',     upper(trim(severity)) )) ~> derivedColumn1",
+				"derivedColumn1 filter(!isNull(codigo_icd) &&",
+				"length(codigo_icd) > 0 &&",
+				"length(codigo_icd) <= 50) ~> filter1",
+				"filter1 aggregate(groupBy(codigo_icd,",
+				"          descripcion_patologia,",
+				"          nivel_severidad),",
+				"     total_diagnosticos = count()) ~> aggregate1",
+				"aggregate1, source2 exists(aggregate1@codigo_icd == source2@codigo_icd",
+				"     && aggregate1@descripcion_patologia == source2@descripcion_patologia",
+				"     && aggregate1@nivel_severidad == source2@nivel_severidad,",
+				"     negate:true,",
+				"     broadcast: 'auto')~> exists1",
+				"exists1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          diagnostico_key as integer,",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          codigo_icd,",
+				"          descripcion_patologia,",
+				"          nivel_severidad",
+				"     )) ~> sink1"
+			]
+		}
+	}
+}
