@@ -1,0 +1,124 @@
+{
+	"name": "df_gold_dim_paciente",
+	"properties": {
+		"folder": {
+			"name": "gold"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "DS_Silver_patients",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_paciente",
+						"type": "DatasetReference"
+					},
+					"name": "source2"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "ds_gold_paciente",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "exists1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          patient_id as integer,",
+				"          full_name as string,",
+				"          gender as string,",
+				"          date_of_birth as date,",
+				"          phone as string,",
+				"          email as string,",
+				"          address as string,",
+				"          insurance_provider as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source1",
+				"source(output(",
+				"          paciente_key as integer,",
+				"          patient_id_bk as integer,",
+				"          nombre_completo as string,",
+				"          genero as string,",
+				"          fecha_nacimiento as date,",
+				"          rango_etario as string,",
+				"          correo_electronico as string,",
+				"          direccion as string,",
+				"          proveedor_seguro as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source2",
+				"source1 derive(patient_id_bk = patient_id,",
+				"          nombre_completo = trim(full_name),",
+				"          fecha_nacimiento = date_of_birth,",
+				"          correo_electronico = lower(trim(email)),",
+				"          direccion = trim(address),",
+				"          genero = case(     upper(trim(gender)) == 'M' ||     upper(trim(gender)) == 'MALE',     'M',      upper(trim(gender)) == 'F' ||     upper(trim(gender)) == 'FEMALE',     'F',      'NO INFORMADO' ),",
+				"          proveedor_seguro = iif(     isNull(insurance_provider) ||     trim(insurance_provider) == '',     'NO INFORMADO',     upper(trim(insurance_provider)) ),",
+				"          rango_etario = case(     isNull(date_of_birth) ||     date_of_birth > currentDate(),     toString(null()),      monthsBetween(currentDate(), date_of_birth) < 216,     '0-17',      monthsBetween(currentDate(), date_of_birth) < 432,     '18-35',      monthsBetween(currentDate(), date_of_birth) < 720,     '36-59',      '60+' )) ~> derivedColumn1",
+				"derivedColumn1 filter(!isNull(patient_id_bk) &&",
+				"patient_id_bk > 0 &&",
+				"!isNull(nombre_completo) &&",
+				"length(trim(nombre_completo)) > 0) ~> filter1",
+				"filter1, source2 exists(derivedColumn1@patient_id_bk == source2@patient_id_bk,",
+				"     negate:true,",
+				"     broadcast: 'auto')~> exists1",
+				"exists1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          paciente_key as integer,",
+				"          patient_id_bk as integer,",
+				"          nombre_completo as string,",
+				"          genero as string,",
+				"          fecha_nacimiento as date,",
+				"          rango_etario as string,",
+				"          correo_electronico as string,",
+				"          direccion as string,",
+				"          proveedor_seguro as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          patient_id_bk,",
+				"          nombre_completo,",
+				"          genero,",
+				"          fecha_nacimiento,",
+				"          rango_etario,",
+				"          correo_electronico,",
+				"          direccion,",
+				"          proveedor_seguro",
+				"     )) ~> sink1"
+			]
+		}
+	}
+}
