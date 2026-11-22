@@ -31,6 +31,8 @@
 			{
 				"name": "ACT_Silver_Admissions",
 				"type": "ExecuteDataFlow",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
 				"dependsOn": [
 					{
 						"activity": "ACT_Silver_Patients",

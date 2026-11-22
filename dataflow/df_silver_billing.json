@@ -10,6 +10,13 @@
 						"type": "DatasetReference"
 					},
 					"name": "source1"
+				},
+				{
+					"dataset": {
+						"referenceName": "DS_Silver_admissions",
+						"type": "DatasetReference"
+					},
+					"name": "source2"
 				}
 			],
 			"sinks": [
@@ -36,6 +43,9 @@
 				},
 				{
 					"name": "alterRow1"
+				},
+				{
+					"name": "exists1"
 				}
 			],
 			"scriptLines": [
@@ -51,6 +61,18 @@
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
 				"     format: 'table') ~> source1",
+				"source(output(",
+				"          admission_id as integer,",
+				"          patient_id as integer,",
+				"          admission_date as date,",
+				"          discharge_date as date,",
+				"          department as string,",
+				"          attending_doctor_id as integer",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source2",
 				"source1 derive(billing_id = trim(billing_id),",
 				"          admission_id = trim(admission_id),",
 				"          charge_type = upper(trim(charge_type)),",
@@ -131,7 +153,10 @@
 				"filter1 derive(billing_id = toInteger(billing_id),",
 				"          admission_id = toInteger(admission_id),",
 				"          amount_decimal = toDecimal(amount_clean, 12, 2)) ~> derivedColumn3",
-				"derivedColumn3 alterRow(upsertIf(true())) ~> alterRow1",
+				"exists1 alterRow(upsertIf(true())) ~> alterRow1",
+				"derivedColumn3, source2 exists(derivedColumn3@admission_id == source2@admission_id,",
+				"     negate:false,",
+				"     broadcast: 'auto')~> exists1",
 				"alterRow1 sink(allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     input(",
