@@ -5,6 +5,9 @@
 			"referenceName": "LS_SQL_DW_Hospital",
 			"type": "LinkedServiceReference"
 		},
+		"folder": {
+			"name": "bronze"
+		},
 		"annotations": [],
 		"type": "AzureSqlTable",
 		"schema": [
