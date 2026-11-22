@@ -41,9 +41,38 @@
 						"type": "DatasetReference"
 					},
 					"name": "srcDimDiagnostico"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_dim_fecha",
+						"type": "DatasetReference"
+					},
+					"name": "srcFechaIngreso"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_dim_fecha",
+						"type": "DatasetReference"
+					},
+					"name": "source2"
+				},
+				{
+					"dataset": {
+						"referenceName": "ds_gold_fact_admisiones",
+						"type": "DatasetReference"
+					},
+					"name": "srcFactExistente"
 				}
 			],
-			"sinks": [],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "ds_gold_fact_admisiones",
+						"type": "DatasetReference"
+					},
+					"name": "sinkFactAdmisiones"
+				}
+			],
 			"transformations": [
 				{
 					"name": "derivedColumn1"
@@ -68,6 +97,33 @@
 				},
 				{
 					"name": "lookupDiagnosticoGold"
+				},
+				{
+					"name": "select1"
+				},
+				{
+					"name": "select2"
+				},
+				{
+					"name": "lookupFechaIngreso"
+				},
+				{
+					"name": "lookupFechaAlta"
+				},
+				{
+					"name": "select3"
+				},
+				{
+					"name": "filterClavesValidas"
+				},
+				{
+					"name": "selectFinalAdmisiones"
+				},
+				{
+					"name": "selectFactExistente"
+				},
+				{
+					"name": "existsNoDuplicados"
 				}
 			],
 			"scriptLines": [
@@ -127,6 +183,60 @@
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
 				"     format: 'table') ~> srcDimDiagnostico",
+				"source(output(",
+				"          fecha_key as integer,",
+				"          fecha_completa as date,",
+				"          anio as integer,",
+				"          trimestre as integer,",
+				"          trimestre_nombre as string,",
+				"          mes as integer,",
+				"          mes_nombre as string,",
+				"          mes_corto as string,",
+				"          semana_anio as integer,",
+				"          dia_mes as integer,",
+				"          dia_semana as integer,",
+				"          dia_nombre as string,",
+				"          es_fin_de_semana as boolean",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcFechaIngreso",
+				"source(output(",
+				"          fecha_key as integer,",
+				"          fecha_completa as date,",
+				"          anio as integer,",
+				"          trimestre as integer,",
+				"          trimestre_nombre as string,",
+				"          mes as integer,",
+				"          mes_nombre as string,",
+				"          mes_corto as string,",
+				"          semana_anio as integer,",
+				"          dia_mes as integer,",
+				"          dia_semana as integer,",
+				"          dia_nombre as string,",
+				"          es_fin_de_semana as boolean",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source2",
+				"source(output(",
+				"          admision_key as long,",
+				"          admission_id_bk as integer,",
+				"          paciente_key as integer,",
+				"          departamento_key as integer,",
+				"          diagnostico_key as integer,",
+				"          fecha_ingreso_key as integer,",
+				"          fecha_alta_key as integer,",
+				"          medico_id as integer,",
+				"          dias_estancia as integer,",
+				"          conteo_admisiones as integer",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcFactExistente",
 				"source1 derive(admission_id_bk = admission_id,",
 				"          conteo_admisiones = 1,",
 				"          dias_estancia = \r",
@@ -173,7 +283,91 @@
 				"     && severity == nivel_severidad,",
 				"     multiple: false,",
 				"     pickup: 'any',",
-				"     broadcast: 'auto')~> lookupDiagnosticoGold"
+				"     broadcast: 'auto')~> lookupDiagnosticoGold",
+				"lookupDiagnosticoGold select(mapColumn(",
+				"          admission_date,",
+				"          discharge_date,",
+				"          attending_doctor_id,",
+				"          admission_id_bk,",
+				"          conteo_admisiones,",
+				"          dias_estancia,",
+				"          paciente_key,",
+				"          departamento_key,",
+				"          diagnostico_key",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"srcFechaIngreso select(mapColumn(",
+				"          fecha_ingreso_key = fecha_key,",
+				"          fecha_ingreso_ref = fecha_completa",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select2",
+				"select1, select2 lookup(admission_date == fecha_ingreso_ref,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookupFechaIngreso",
+				"lookupFechaIngreso, select3 lookup(discharge_date == fecha_alta_ref,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookupFechaAlta",
+				"source2 select(mapColumn(",
+				"          fecha_alta_key = fecha_key,",
+				"          fecha_alta_ref = fecha_completa",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select3",
+				"lookupFechaAlta filter(",
+				"!isNull(paciente_key)",
+				"&& !isNull(departamento_key)",
+				"&& !isNull(diagnostico_key)",
+				"&& !isNull(fecha_ingreso_key)",
+				"&& !isNull(attending_doctor_id)",
+				"&& (isNull(discharge_date) || !isNull(fecha_alta_key))",
+				") ~> filterClavesValidas",
+				"filterClavesValidas select(mapColumn(",
+				"          attending_doctor_id,",
+				"          admission_id_bk,",
+				"          conteo_admisiones,",
+				"          dias_estancia,",
+				"          paciente_key,",
+				"          departamento_key,",
+				"          diagnostico_key,",
+				"          fecha_ingreso_key,",
+				"          fecha_alta_key",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> selectFinalAdmisiones",
+				"srcFactExistente select(mapColumn(",
+				"          id_existente = admission_id_bk",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> selectFactExistente",
+				"selectFinalAdmisiones, selectFactExistente exists(admission_id_bk == id_existente,",
+				"     negate:false,",
+				"     broadcast: 'auto')~> existsNoDuplicados",
+				"existsNoDuplicados sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          admision_key as long,",
+				"          admission_id_bk as integer,",
+				"          paciente_key as integer,",
+				"          departamento_key as integer,",
+				"          diagnostico_key as integer,",
+				"          fecha_ingreso_key as integer,",
+				"          fecha_alta_key as integer,",
+				"          medico_id as integer,",
+				"          dias_estancia as integer,",
+				"          conteo_admisiones as integer",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError') ~> sinkFactAdmisiones"
 			]
 		}
 	}
